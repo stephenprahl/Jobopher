@@ -7,21 +7,34 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "tsx src/server/index.ts",
+    "server:dev": "nodemon --exec tsx src/server/index.ts",
+    "dev:full": "concurrently \"npm run server:dev\" \"npm run dev\""
   },
   "dependencies": {
     "@google/genai": "^1.35.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.0.0",
     "clsx": "^2.1.1",
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
     "lucide-react": "^0.562.0",
+    "multer": "^2.0.2",
+    "nodemon": "^3.1.11",
     "pdfjs-dist": "^5.4.530",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "recharts": "^3.6.0"
+    "recharts": "^3.6.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@tailwindcss/postcss": "^4.1.18",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.6",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",

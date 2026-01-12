@@ -1,0 +1,179 @@
+import express from 'express';
+import cors from 'cors';
+import multer from 'multer';
+import { analyzeJobFit, generateCoverLetter, optimizeProfileSummary } from './services/geminiService.js';
+import { parseResumeFile } from './services/resumeParser.js';
+import type { UserProfile, ApplicationRecord } from '../types.js';
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// File upload configuration
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (_req, file, cb) => {
+    const allowedTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Unsupported file type'));
+    }
+  }
+});
+
+// In-memory storage (replace with database in production)
+let userProfile: UserProfile | null = null;
+let applications: ApplicationRecord[] = [];
+
+// Routes
+
+// Health check
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'OK', timestamp: Date.now() });
+});
+
+// Profile management
+app.get('/api/profile', (_req, res) => {
+  if (!userProfile) {
+    return res.status(404).json({ error: 'No profile found' });
+  }
+  res.json(userProfile);
+});
+
+app.post('/api/profile', (req, res) => {
+  userProfile = req.body;
+  res.json({ success: true, profile: userProfile });
+});
+
+// Resume parsing
+app.post('/api/parse-resume', upload.single('resume'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Convert buffer to File object for the existing parser
+    const arrayBuffer = req.file!.buffer.buffer.slice(req.file!.buffer.byteOffset, req.file!.buffer.byteOffset + req.file!.buffer.byteLength);
+    const file = new File([arrayBuffer as ArrayBuffer], req.file!.originalname, {
+      type: req.file!.mimetype
+    });
+
+    const result = await parseResumeFile(file);
+    res.json(result);
+  } catch (error) {
+    console.error('Resume parsing error:', error);
+    res.status(500).json({ error: 'Failed to parse resume' });
+  }
+});
+
+// Job analysis
+app.post('/api/analyze-job-fit', async (req, res) => {
+  try {
+    const { profile, job } = req.body;
+    
+    if (!profile || !job) {
+      return res.status(400).json({ error: 'Profile and job are required' });
+    }
+
+    const result = await analyzeJobFit(profile, job);
+    res.json(result);
+  } catch (error) {
+    console.error('Job analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze job fit' });
+  }
+});
+
+// Cover letter generation
+app.post('/api/generate-cover-letter', async (req, res) => {
+  try {
+    const { profile, job } = req.body;
+    
+    if (!profile || !job) {
+      return res.status(400).json({ error: 'Profile and job are required' });
+    }
+
+    const coverLetter = await generateCoverLetter(profile, job);
+    res.json({ coverLetter });
+  } catch (error) {
+    console.error('Cover letter generation error:', error);
+    res.status(500).json({ error: 'Failed to generate cover letter' });
+  }
+});
+
+// Profile optimization
+app.post('/api/optimize-profile', async (req, res) => {
+  try {
+    const { rawText } = req.body;
+    
+    if (!rawText) {
+      return res.status(400).json({ error: 'Raw text is required' });
+    }
+
+    const result = await optimizeProfileSummary(rawText);
+    res.json(result);
+  } catch (error) {
+    console.error('Profile optimization error:', error);
+    res.status(500).json({ error: 'Failed to optimize profile' });
+  }
+});
+
+// Application management
+app.get('/api/applications', (_req, res) => {
+  res.json(applications);
+});
+
+app.post('/api/applications', (req, res) => {
+  const application: ApplicationRecord = {
+    id: Date.now().toString(),
+    timestamp: Date.now(),
+    ...req.body
+  };
+  
+  applications.push(application);
+  res.json({ success: true, application });
+});
+
+app.put('/api/applications/:id', (req, res) => {
+  const { id } = req.params;
+  const index = applications.findIndex(app => app.id === id);
+  
+  if (index === -1) {
+    return res.status(404).json({ error: 'Application not found' });
+  }
+  
+  applications[index] = { ...applications[index], ...req.body };
+  res.json({ success: true, application: applications[index] });
+});
+
+app.delete('/api/applications/:id', (req, res) => {
+  const { id } = req.params;
+  const index = applications.findIndex(app => app.id === id);
+  
+  if (index === -1) {
+    return res.status(404).json({ error: 'Application not found' });
+  }
+  
+  applications.splice(index, 1);
+  res.json({ success: true });
+});
+
+// Error handling middleware
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Backend server running on http://localhost:${PORT}`);
+  console.log(`📊 API endpoints available at http://localhost:${PORT}/api`);
+});
+
+export default app;
