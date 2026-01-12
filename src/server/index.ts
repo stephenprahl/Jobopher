@@ -1,9 +1,10 @@
-import express from 'express';
 import cors from 'cors';
+import express from 'express';
 import multer from 'multer';
+import type { ApplicationRecord, Job, UserProfile } from '../types.js';
+import { AutoApplyWorkflow } from './agents/AutoApplyWorkflow.js';
 import { analyzeJobFit, generateCoverLetter, optimizeProfileSummary } from './services/geminiService.js';
 import { parseResumeFile } from './services/resumeParser.js';
-import type { UserProfile, ApplicationRecord } from '../types.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,7 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // File upload configuration
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (_req, file, cb) => {
@@ -27,6 +28,9 @@ const upload = multer({
     }
   }
 });
+
+// Initialize the LangGraph workflow
+const autoApplyWorkflow = new AutoApplyWorkflow(process.env.API_KEY);
 
 // In-memory storage (replace with database in production)
 let userProfile: UserProfile | null = null;
@@ -77,7 +81,7 @@ app.post('/api/parse-resume', upload.single('resume'), async (req, res) => {
 app.post('/api/analyze-job-fit', async (req, res) => {
   try {
     const { profile, job } = req.body;
-    
+
     if (!profile || !job) {
       return res.status(400).json({ error: 'Profile and job are required' });
     }
@@ -94,7 +98,7 @@ app.post('/api/analyze-job-fit', async (req, res) => {
 app.post('/api/generate-cover-letter', async (req, res) => {
   try {
     const { profile, job } = req.body;
-    
+
     if (!profile || !job) {
       return res.status(400).json({ error: 'Profile and job are required' });
     }
@@ -111,7 +115,7 @@ app.post('/api/generate-cover-letter', async (req, res) => {
 app.post('/api/optimize-profile', async (req, res) => {
   try {
     const { rawText } = req.body;
-    
+
     if (!rawText) {
       return res.status(400).json({ error: 'Raw text is required' });
     }
@@ -135,7 +139,7 @@ app.post('/api/applications', (req, res) => {
     timestamp: Date.now(),
     ...req.body
   };
-  
+
   applications.push(application);
   res.json({ success: true, application });
 });
@@ -143,11 +147,11 @@ app.post('/api/applications', (req, res) => {
 app.put('/api/applications/:id', (req, res) => {
   const { id } = req.params;
   const index = applications.findIndex(app => app.id === id);
-  
+
   if (index === -1) {
     return res.status(404).json({ error: 'Application not found' });
   }
-  
+
   applications[index] = { ...applications[index], ...req.body };
   res.json({ success: true, application: applications[index] });
 });
@@ -155,13 +159,69 @@ app.put('/api/applications/:id', (req, res) => {
 app.delete('/api/applications/:id', (req, res) => {
   const { id } = req.params;
   const index = applications.findIndex(app => app.id === id);
-  
+
   if (index === -1) {
     return res.status(404).json({ error: 'Application not found' });
   }
-  
+
   applications.splice(index, 1);
   res.json({ success: true });
+});
+
+// Auto-apply workflow orchestration
+app.post('/api/auto-apply', upload.single('resume'), async (req, res) => {
+  try {
+    const { jobs, maxApplications } = req.body;
+
+    if (!jobs || !Array.isArray(jobs) || jobs.length === 0) {
+      return res.status(400).json({ error: 'Jobs array is required' });
+    }
+
+    let resumeFile: File | undefined;
+    if (req.file) {
+      // Convert buffer to File object
+      const arrayBuffer = req.file!.buffer.buffer.slice(req.file!.buffer.byteOffset, req.file!.buffer.byteOffset + req.file!.buffer.byteLength);
+      resumeFile = new File([arrayBuffer as ArrayBuffer], req.file!.originalname, {
+        type: req.file!.mimetype
+      });
+    }
+
+    // Run the orchestrated workflow
+    const result = await autoApplyWorkflow.run({
+      resumeFile,
+      jobs: jobs as Job[],
+      maxApplications: maxApplications || 5,
+      profile: userProfile || undefined // Use existing profile if available
+    });
+
+    // Update global state with results
+    if (result.profile) {
+      userProfile = result.profile;
+    }
+    if (result.applications) {
+      // Merge new applications with existing ones
+      const existingIds = new Set(applications.map(app => app.id));
+      const newApplications = result.applications.filter(app => !existingIds.has(app.id));
+      applications.push(...newApplications);
+    }
+
+    res.json({
+      success: true,
+      status: result.status,
+      profile: result.profile,
+      applications: result.applications,
+      logs: result.logs,
+      errors: result.errors
+    });
+
+  } catch (error) {
+    console.error('Auto-apply workflow error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to execute auto-apply workflow',
+      details: errorMessage
+    });
+  }
 });
 
 // Error handling middleware

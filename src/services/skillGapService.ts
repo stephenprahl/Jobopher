@@ -1,7 +1,11 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import type { UserProfile, Job, SkillGap } from '../types.ts';
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { ChatOllama } from "@langchain/ollama";
+import type { Job, SkillGap, UserProfile } from '../types.ts';
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY || '' });
+const llm = import.meta.env.VITE_API_KEY ? new ChatOllama({
+  model: "gpt-oss:120b-cloud",
+  baseUrl: import.meta.env.VITE_OLLAMA_BASE_URL || "http://localhost:11434",
+}) : null;
 
 export const analyzeSkillGap = async (
   profile: UserProfile,
@@ -12,7 +16,7 @@ export const analyzeSkillGap = async (
   }
 
   try {
-    const jobContext = targetJobs 
+    const jobContext = targetJobs
       ? targetJobs.map(job => `${job.title} at ${job.company}: ${job.tags.join(', ')}`).join('\n')
       : 'Senior Frontend Engineer, Full Stack Developer roles in tech industry';
 
@@ -35,25 +39,13 @@ export const analyzeSkillGap = async (
       - analysis: string explaining the skill gap analysis (2-3 sentences)
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            missing: { type: Type.ARRAY, items: { type: Type.STRING } },
-            strong: { type: Type.ARRAY, items: { type: Type.STRING } },
-            recommended: { type: Type.ARRAY, items: { type: Type.STRING } },
-            analysis: { type: Type.STRING },
-          },
-          required: ['missing', 'strong', 'recommended', 'analysis'],
-        },
-      },
-    });
+    const messages = [
+      new SystemMessage("You are a career development expert specializing in skill gap analysis. Always respond with valid JSON."),
+      new HumanMessage(prompt)
+    ];
 
-    const result = JSON.parse(response.text || '{}');
+    const response = await llm!.invoke(messages);
+    const result = JSON.parse(response.content as string);
     return result as SkillGap;
   } catch (error) {
     console.error("Error analyzing skill gap:", error);
@@ -65,7 +57,7 @@ const getDemoSkillGap = (profile: UserProfile): SkillGap => {
   const commonMissing = ['Docker', 'Kubernetes', 'AWS', 'GraphQL', 'TypeScript'];
   const commonStrong = ['JavaScript', 'React', 'CSS', 'HTML', 'Git'];
   const commonRecommended = ['TypeScript', 'Docker', 'AWS'];
-  
+
   return {
     missing: commonMissing.filter(skill => !profile.skills.includes(skill)),
     strong: commonStrong.filter(skill => profile.skills.includes(skill)),
@@ -75,7 +67,7 @@ const getDemoSkillGap = (profile: UserProfile): SkillGap => {
 };
 
 export const getMarketTrends = async (): Promise<string[]> => {
-  if (!import.meta.env.VITE_API_KEY) {
+  if (!llm) {
     return [
       'AI/ML integration in web development',
       'Cloud-native application development',
@@ -91,19 +83,13 @@ export const getMarketTrends = async (): Promise<string[]> => {
       Return as a JSON array of strings.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING }
-        }
-      },
-    });
+    const messages = [
+      new SystemMessage("You are a technology trends expert. Always respond with valid JSON."),
+      new HumanMessage(prompt)
+    ];
 
-    return JSON.parse(response.text || '[]');
+    const response = await llm!.invoke(messages);
+    return JSON.parse(response.content as string);
   } catch (error) {
     console.error("Error getting market trends:", error);
     return [];

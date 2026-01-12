@@ -10,10 +10,13 @@
     "preview": "vite preview",
     "server": "tsx src/server/index.ts",
     "server:dev": "nodemon --exec tsx src/server/index.ts",
-    "dev:full": "concurrently \"npm run server:dev\" \"npm run dev\""
+    "dev:full": "concurrently \"npm run server:dev\" \"npm run dev\"",
+    "test:workflow": "tsx test-workflow.ts"
   },
   "dependencies": {
-    "@google/genai": "^1.35.0",
+    "@langchain/core": "^1.1.12",
+    "@langchain/langgraph": "^1.0.15",
+    "@langchain/ollama": "^1.1.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.0.0",
@@ -21,6 +24,7 @@
     "concurrently": "^9.2.1",
     "cors": "^2.8.5",
     "express": "^5.2.1",
+    "langchain": "^1.2.7",
     "lucide-react": "^0.562.0",
     "multer": "^2.0.2",
     "nodemon": "^3.1.11",
