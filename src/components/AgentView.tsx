@@ -79,41 +79,60 @@ const AgentView: React.FC<AgentViewProps> = ({ profile: _profile, applications, 
     if (isRunning) return;
     setIsRunning(true);
     setIsLoading(true);
-    addLog("AI Agent initialized. Starting auto-apply workflow...", 'info');
-    setTask("Running auto-apply workflow...");
+    addLog("AI Agent initialized. Starting job search...", 'info');
+    setTask("Searching for jobs...");
 
     try {
-      const mockJobs: Job[] = [
-        {
-          id: '1',
-          title: 'Senior Frontend Developer',
-          company: 'TechCorp',
-          location: 'Remote',
-          salary: '$120k - $160k',
-          description: 'Looking for an experienced frontend developer with React and TypeScript expertise...',
-          postedAt: '2 hours ago',
-          tags: ['React', 'TypeScript', 'Remote'],
-          logo: '/api/placeholder/64/64',
-          applicationUrl: 'https://careers.techcorp.com/jobs/senior-frontend-developer'
-        },
-        {
-          id: '2',
-          title: 'Full Stack Engineer',
-          company: 'StartupXYZ',
-          location: 'San Francisco',
-          salary: '$100k - $140k',
-          description: 'Join our team to build innovative web applications using modern technologies...',
-          postedAt: '1 day ago',
-          tags: ['Node.js', 'React', 'MongoDB'],
-          logo: '/api/placeholder/64/64',
-          applicationUrl: 'https://startupxyz.com/careers/full-stack-engineer'
-        }
-      ];
+      // Search for jobs using the configured parameters
+      addLog(`Searching for jobs with keywords: ${config.keywords.join(', ')}`, 'info');
+      
+      const searchParams = {
+        keywords: config.keywords,
+        location: config.location,
+        remote: config.remoteOnly,
+        salaryMin: parseInt(config.salaryMin) || undefined,
+        jobType: config.jobType === 'any' ? undefined : config.jobType,
+        limit: 20
+      };
 
-      addLog(`Processing ${mockJobs.length} jobs through auto-apply workflow...`, 'info');
+      const searchResult = await backendApi.searchJobs(searchParams);
+      const foundJobs = searchResult.jobs || [];
+      
+      addLog(`Found ${foundJobs.length} jobs matching "${config.keywords.join(' ')}"`, 'info');
+      
+      if (foundJobs.length === 0) {
+        addLog("No jobs found. Try adjusting your search criteria.", 'warning');
+        setIsRunning(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // Filter out jobs that contain excluded keywords
+      const filteredJobs = foundJobs.filter((job: Job) => 
+        !config.excludeKeywords.some(exclude => 
+          job.title.toLowerCase().includes(exclude.toLowerCase()) ||
+          job.description.toLowerCase().includes(exclude.toLowerCase()) ||
+          job.company.toLowerCase().includes(exclude.toLowerCase())
+        )
+      );
+
+      addLog(`Filtered to ${filteredJobs.length} jobs after excluding keywords`, 'info');
+      
+      if (filteredJobs.length === 0) {
+        addLog("No jobs remaining after filtering. Try adjusting your exclude keywords.", 'warning');
+        setIsRunning(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // Limit to max applications per run
+      const jobsToProcess = filteredJobs.slice(0, config.applicationsPerHour);
+      
+      addLog(`Processing ${jobsToProcess.length} jobs through auto-apply workflow...`, 'info');
+      setTask("Running auto-apply workflow...");
       setProgress(25);
 
-      const result = await backendApi.runAutoApply(mockJobs, config.applicationsPerHour);
+      const result = await backendApi.runAutoApply(jobsToProcess, config.applicationsPerHour);
 
       setProgress(75);
       addLog("Auto-apply workflow completed successfully!", 'success');

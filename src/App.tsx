@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import Sidebar from './components/Sidebar.tsx';
 import Dashboard from './components/Dashboard.tsx';
 import AgentView from './components/AgentView.tsx';
@@ -6,10 +7,13 @@ import ProfileSetup from './components/ProfileSetup.tsx';
 import ApplicationHistory from './components/ApplicationHistory.tsx';
 import JobRecommendations from './components/JobRecommendations.tsx';
 import Settings from './components/Settings.tsx';
+import { backendApi } from './services/backendService.ts';
 import type { UserProfile, ApplicationRecord, UserSettings } from './types.ts';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState('dashboard');
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   // Central State
   const [profile, setProfile] = useState<UserProfile>({
@@ -79,8 +83,60 @@ const App: React.FC = () => {
     apiKeys: {}
   });
 
+  // Load data from backend on startup
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+
+        // Load profile
+        try {
+          const profileData = await backendApi.getProfile();
+          // Only update profile if it has actual data (not empty object)
+          if (profileData && Object.keys(profileData).length > 0 && profileData.name) {
+            setProfile(profileData);
+          }
+        } catch (error) {
+          console.warn('Failed to load profile from backend, using defaults:', error);
+        }
+
+        // Load applications
+        try {
+          const applicationsData = await backendApi.getApplications();
+          setApplications(applicationsData);
+        } catch (error) {
+          console.warn('Failed to load applications from backend:', error);
+        }
+
+        // Load settings
+        try {
+          const settingsData = await backendApi.getSettings();
+          setSettings(prevSettings => ({
+            ...prevSettings,
+            ...settingsData
+          }));
+        } catch (error) {
+          console.warn('Failed to load settings from backend:', error);
+        }
+
+      } catch (error) {
+        console.error('Failed to load data from backend:', error);
+        setLoadError('Failed to load data from backend. Some features may not work properly.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
   const addApplication = (app: ApplicationRecord) => {
     setApplications(prev => [...prev, app]);
+    // Save to backend
+    backendApi.createApplication(app).catch(error => {
+      console.error('Failed to save application to backend:', error);
+    });
   };
 
   const renderContent = () => {
@@ -113,7 +169,29 @@ const App: React.FC = () => {
         <header className="mb-8 flex justify-between items-center lg:hidden">
              <div className="text-xl font-semibold text-gray-900">CareerFlow Pro</div>
         </header>
-        {renderContent()}
+        
+        {isLoading ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading your data...</p>
+            </div>
+          </div>
+        ) : loadError ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertTriangle className="h-5 w-5 text-red-400" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Loading Error</h3>
+                <div className="mt-2 text-sm text-red-700">{loadError}</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          renderContent()
+        )}
       </main>
     </div>
   );

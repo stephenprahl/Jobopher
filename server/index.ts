@@ -47,10 +47,7 @@ app.get('/api/health', (_req, res) => {
 
 // Profile management
 app.get('/api/profile', (_req, res) => {
-  if (!userProfile) {
-    return res.status(404).json({ error: 'No profile found' });
-  }
-  res.json(userProfile);
+  res.json(userProfile || {});
 });
 
 app.post('/api/profile', (req, res) => {
@@ -226,7 +223,16 @@ app.post('/api/settings', (req, res) => {
 // Auto-apply workflow orchestration
 app.post('/api/auto-apply', upload.single('resume'), async (req, res) => {
   try {
-    const { jobs, maxApplications } = req.body;
+    let { jobs, maxApplications } = req.body;
+
+    // Parse jobs if it's a string (from FormData)
+    if (typeof jobs === 'string') {
+      try {
+        jobs = JSON.parse(jobs);
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid jobs data format' });
+      }
+    }
 
     if (!jobs || !Array.isArray(jobs) || jobs.length === 0) {
       return res.status(400).json({ error: 'Jobs array is required' });

@@ -170,10 +170,13 @@ class JobSearchService {
                         });
                     }
                 });
-                return jobs;
+
+                return extractedJobs;
             });
 
             return jobs;
+
+        } catch (error) {
             console.error('Error searching Google jobs:', error);
             return [];
         } finally {

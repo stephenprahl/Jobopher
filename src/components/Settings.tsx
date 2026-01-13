@@ -16,6 +16,7 @@ import {
   Zap
 } from 'lucide-react';
 import React, { useState } from 'react';
+import { backendApi } from '../services/backendService.ts';
 import type { UserSettings } from '../types.ts';
 
 interface SettingsProps {
@@ -31,10 +32,15 @@ const Settings: React.FC<SettingsProps> = ({ settings, setSettings }) => {
 
   const handleSave = async () => {
     setSaveStatus('saving');
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setSaveStatus('saved');
-    setTimeout(() => setSaveStatus('idle'), 3000);
+    try {
+      await backendApi.updateSettings(settings);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
   };
 
   const updateSettings = (section: keyof UserSettings, updates: any) => {
